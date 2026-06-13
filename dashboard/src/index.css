@@ -1,0 +1,77 @@
+:root {
+  --parchment:      #F5F1EA;
+  --parchment-mid:  #EDE8DF;
+  --parchment-dark: #E2DDD5;
+  --ink:            #0D0B09;
+  --ink-deep:       #19160F;
+  --ink-mid:        #3A3630;
+  --ink-muted:      #6F6A63;
+  --ink-wash:       #A8A29A;
+  --ink-trace:      #D5D0C8;
+  --ink-ghost:      #E8E4DD;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+html, body, #root { min-height: 100vh; }
+
+body {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+  display: block;
+}
+
+/* ── Keyframes ── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.85); }
+}
+@keyframes cardPulse {
+  0%, 100% { box-shadow: 0 0 18px rgba(245,241,234,0.05); }
+  50%       { box-shadow: 0 0 32px rgba(245,241,234,0.12); }
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(245,241,234,0.1); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(245,241,234,0.2); }
+
+/* ── Selection ── */
+::selection { background: rgba(245,241,234,0.15); color: #F5F1EA; }
+
+code, pre { font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace; }
+
+button:focus-visible { outline: 1px solid rgba(245,241,234,0.3); outline-offset: 2px; }
+a:focus-visible      { outline: 1px solid rgba(245,241,234,0.3); outline-offset: 2px; }
+
+button { font: inherit; }
+a { color: inherit; }
+
+/* ── Ink watermark on dashboard screens ── */
+.screen-kanji {
+  position: fixed;
+  right: -20px; bottom: -60px;
+  font-size: 500px;
+  line-height: 1;
+  color: rgba(245,241,234,0.018);
+  font-family: serif;
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+}

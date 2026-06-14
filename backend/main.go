@@ -17,10 +17,14 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/cors"
 
 	"github.com/raftweave/backend/internal/auth"
+	"github.com/raftweave/backend/internal/ingestion"
+	"github.com/raftweave/backend/internal/ingestion/webhook"
+	"github.com/raftweave/backend/internal/security/vault"
 )
 
 func main() {
@@ -90,6 +94,8 @@ func main() {
 
 	oauthHandler.RegisterRoutes(mux, oauthAuthorizeLimiter, oauthCallbackLimiter)
 
+	mux.Handle("GET /metrics", promhttp.Handler())
+
 	corsMiddleware := cors.New(cors.Options{
 		AllowedOrigins:   env.allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
@@ -114,6 +120,34 @@ func main() {
 		}
 	}()
 
+	// --- Ingestion layer (System 1) ---
+	// The ingestion mTLS server requires a SPIFFE Workload API socket. If
+	// none is reachable (e.g. SPIRE is not deployed in this environment),
+	// log a warning and continue running without it rather than failing
+	// the whole process.
+	var ingestionSrv *ingestion.Server
+	vaultClient, err := vault.NewClient()
+	if err != nil {
+		log.Printf("[startup] %s ingestion layer disabled: %v", ts(), err)
+	} else {
+		webhookHandler := webhook.NewHandler(vaultClient, webhook.NewDedup(redisClient), webhook.NewRateLimiter())
+		ingestionSrv, err = ingestion.New(ctx, ingestion.Config{
+			ListenAddr:       env.ingestionListenAddr,
+			SPIFFESocketPath: env.spiffeSocketPath,
+		}, webhookHandler)
+		if err != nil {
+			log.Printf("[startup] %s ingestion layer disabled: %v", ts(), err)
+			ingestionSrv = nil
+		} else {
+			go func() {
+				log.Printf("[startup] %s ingestion mTLS listener starting on %s", ts(), env.ingestionListenAddr)
+				if err := ingestionSrv.ListenAndServeTLS(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					log.Printf("[startup] %s ingestion server error: %v", ts(), err)
+				}
+			}()
+		}
+	}
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
@@ -121,6 +155,12 @@ func main() {
 	log.Printf("[shutdown] %s shutdown signal received", ts())
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
+
+	if ingestionSrv != nil {
+		if err := ingestionSrv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("[shutdown] %s ingestion server shutdown failed: %v", ts(), err)
+		}
+	}
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("[shutdown] %s graceful shutdown failed: %v", ts(), err)
@@ -149,6 +189,9 @@ type envConfig struct {
 	googleClientID     string
 	googleClientSecret string
 	googleRedirectURL  string
+
+	ingestionListenAddr string
+	spiffeSocketPath    string
 }
 
 func loadConfig() (*auth.Config, *envConfig, error) {
@@ -230,6 +273,9 @@ func loadConfig() (*auth.Config, *envConfig, error) {
 		googleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		googleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		googleRedirectURL:  os.Getenv("GOOGLE_REDIRECT_URL"),
+
+		ingestionListenAddr: getEnvDefault("INGESTION_LISTEN_ADDR", ":8443"),
+		spiffeSocketPath:    getEnvDefault("SPIFFE_ENDPOINT_SOCKET", "unix:///tmp/spire-agent/public/api.sock"),
 	}
 
 	return cfg, env, nil

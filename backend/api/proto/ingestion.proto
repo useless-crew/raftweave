@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package raftweave.ingestion.v1;
+
+option go_package = "github.com/raftweave/backend/api/proto;ingestionv1";
+
+// WebhookEvent represents a single push event received from a source code
+// host (GitHub or GitLab) after transport-level verification.
+message WebhookEvent {
+  // "github" or "gitlab".
+  string provider = 1;
+
+  // Stable identifier for the repository the event originated from,
+  // used as the dedup/rate-limit scope key.
+  string repo_id = 2;
+
+  // Unique delivery identifier supplied by the provider
+  // (X-GitHub-Delivery for GitHub, generated for GitLab) used for replay
+  // detection.
+  string delivery_id = 3;
+
+  // Raw JSON payload of the webhook body.
+  bytes payload = 4;
+
+  // Commit SHA the event refers to, when available.
+  string commit_sha = 5;
+}
+
+// WebhookAck is returned to the caller once a webhook event has been
+// accepted for processing.
+message WebhookAck {
+  bool accepted = 1;
+  string delivery_id = 2;
+}
+
+// ResourceSpec describes the compute resources requested for a workload.
+message ResourceSpec {
+  int32 cpu_millicores = 1;
+  int32 memory_mib = 2;
+}
+
+// DatabaseSpec describes the managed database requested for a workload.
+message DatabaseSpec {
+  string type = 1;
+  string version = 2;
+}
+
+// WorkloadSpec is the parsed and validated representation of a
+// raftweave.yaml workload descriptor.
+message WorkloadSpec {
+  string workload_name = 1;
+  string primary_cloud = 2;
+  repeated string standby_clouds = 3;
+  string primary_region = 4;
+  string compute_type = 5;
+  ResourceSpec resources = 6;
+  DatabaseSpec database = 7;
+  repeated string dependencies = 8;
+}
+
+// IngestionService is the entry point for the RaftWeave ingestion layer.
+service IngestionService {
+  // ReceiveWebhook accepts a verified, deduplicated, rate-limited webhook
+  // event for further processing.
+  rpc ReceiveWebhook(WebhookEvent) returns (WebhookAck);
+}
